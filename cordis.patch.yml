@@ -1,10 +1,13 @@
 # dsh-mobile-shell bundle patch.
 #
-# Mounts one code row. The plugin registers an index tap on the webserver that
-# injects the mobile shell layer (polyfill + stylesheet + script) into every
-# served index.html. It deliberately patches NOTHING else: the bind address
-# stays owned by the web-app row, which reads it from the app flags.
+# Mounts one code row. The plugin does two things:
+#   1. an index tap on the webserver that injects the mobile shell layer
+#      (polyfill + stylesheet + script) into every served index.html;
+#   2. three /api routes for the workspace file browser (page, download,
+#      reveal-in-file-manager), which ride Connection's authentication.
+# It deliberately patches NOTHING else: the bind address stays owned by the
+# web-app row, which reads it from the app flags.
 - insert:
     - id: mobile-shell
       name: 'dsh-mobile-shell'
-      inject: [webServer]
+      inject: [webServer, connection, workspaceRegistry]

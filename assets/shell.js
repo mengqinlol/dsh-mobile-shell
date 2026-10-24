@@ -168,10 +168,44 @@
       return;
     }
 
+    // Workspace-file browser entry: an absolutely positioned row inside the
+    // drawer, so it needs no DSH DOM surgery and disappears with the drawer.
+    // The page itself is served by this plugin at /api/workspace-files and
+    // rides the same session cookie as the GUI.
+    var filesLink = null;
+    var syncFilesLink = function () {
+      if (!narrow.matches) {
+        if (filesLink !== null) { filesLink.remove(); filesLink = null; }
+        return;
+      }
+      var open = panel.getBoundingClientRect().width > 100;
+      if (!open || !panel.isConnected) {
+        if (filesLink !== null) { filesLink.remove(); filesLink = null; }
+        return;
+      }
+      if (filesLink !== null && filesLink.isConnected) return;
+      filesLink = document.createElement("a");
+      filesLink.href = "/api/workspace-files";
+      filesLink.textContent = "📁 工作区文件";
+      filesLink.setAttribute("data-dsh-files-link", "");
+      filesLink.style.cssText =
+        "position:absolute;left:12px;right:12px;bottom:72px;display:flex;align-items:center;" +
+        "gap:8px;padding:10px 12px;border-radius:10px;color:inherit;text-decoration:none;" +
+        "font:inherit;background:rgba(127,127,127,0.14);-webkit-tap-highlight-color:transparent;";
+      // Re-attach when the shell re-renders the panel contents.
+      panel.appendChild(filesLink);
+    };
+
     var sync = function () {
       var open = narrow.matches && panel.getBoundingClientRect().width > 100;
       if (open) addScrim();
       else removeScrim();
+      try {
+        syncFilesLink();
+      } catch (error) {
+        // The entry point is a convenience; the page URL always works.
+        if (window.console) window.console.warn("dsh-mobile-shell: files link failed", error);
+      }
     };
     if (typeof ResizeObserver === "function") new ResizeObserver(sync).observe(panel);
     window.addEventListener("resize", sync);

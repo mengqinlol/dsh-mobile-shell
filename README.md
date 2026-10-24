@@ -2,11 +2,14 @@
 
 把 DeepSeek Harness 的 Web GUI 在**手机**上真正用起来：悬浮式侧栏、页面锁死只滚对话、
 点输入框不放大、切会话不抢焦点、键盘弹出时输入框贴着键盘上移，并给非安全上下文补上
-`crypto.randomUUID`。
+`crypto.randomUUID`。顺带还有一个**工作区文件浏览器**：在手机浏览器里浏览工作区、
+下载任意文件、在宿主机的资源管理器里打开当前文件夹。
 
 *English*: A mobile shell layer for the DeepSeek Harness Web GUI — drawer overlay,
-page lock, no iOS focus zoom, keyboard-aware composer, and the
-`crypto.randomUUID` polyfill that plain-HTTP (non-secure context) browsing needs.
+page lock, no iOS focus zoom, keyboard-aware composer, the
+`crypto.randomUUID` polyfill that plain-HTTP (non-secure context) browsing needs,
+plus a cookie-authenticated workspace file browser with download and
+"reveal in file manager".
 
 ![悬浮抽屉](docs/drawer.png)
 ![对话](docs/chat.png)
@@ -28,6 +31,29 @@ DSH 的 Web GUI 是按桌面设计的：打包后的前端 CSS 里**没有任何
 | 键盘挡住输入框 | iOS 不为软键盘缩小布局视口 | 用 `visualViewport` 算键盘 inset，对话列整体上移 |
 
 另外：切会话时抽屉自动收起、设置弹窗改为全屏 + 顶部分组横滑、触控目标 ≥ 32px。
+
+## 工作区文件浏览器
+
+侧栏（抽屉）里多了一个 **📁 工作区文件** 入口，也可以直接访问
+`http://<你的地址>/api/workspace-files`。
+
+| 路由 | 作用 |
+|---|---|
+| `GET /api/workspace-files` | 网页版文件浏览：工作区切换、面包屑、目录列表（文件夹优先，显示大小/时间） |
+| `GET /api/workspace-files.download?w=&p=` | 以附件下载文件（`content-disposition`，中文名走 `filename*=UTF-8''`） |
+| `POST /api/workspace-files.open?w=&p=` | 在**宿主机**的资源管理器 / Finder 里打开该文件夹 |
+
+`w` 是工作区序号（页面下拉框里的顺序），`p` 是相对工作区根的路径。
+
+安全设计：
+
+- 三个路由都注册在 Connection 的 `/api` 传输上，**自动继承同一套 cookie 鉴权与
+  Host/Origin 栅栏**——没有会话 cookie 一律 401，伪造 Host 403；
+- 每次请求都用 `realpath` 解析并校验「仍在工作区根内」，`..`、符号链接、跨盘符都会被拒；
+- 页面标题/文件名全部 HTML 转义，目录列表上限 2000 条；
+- `open` 只启动宿主机上的 `explorer.exe` / `open` / `xdg-open`，不做任何 shell 拼接。
+
+所以它的暴露面和 GUI 本身一致：**能登录 GUI 的人，本来就能让 agent 读这些文件**。
 
 ## 安装
 
@@ -53,17 +79,18 @@ dsh plugin --profile web add link:/path/to/dsh-mobile-shell
 
 ```
 dsh-mobile-shell/
-├── package.json          # dsh.bundle.patch → cordis.patch.yml
-├── cordis.patch.yml      # 只插入自己这一行，不动任何其它行
-├── lib/index.js          # index tap：polyfill + <style> + <script>
-├── assets/mobile-fix.css # 移动端样式（每次请求读盘）
-├── assets/shell.js       # 移动端行为（每次请求读盘）
-└── test/smoke.mjs        # 挂载插件并断言注入内容
+├── package.json             # dsh.bundle.patch → cordis.patch.yml
+├── cordis.patch.yml         # 只插入自己这一行，不动任何其它行
+├── lib/index.js             # index tap：polyfill + <style> + <script>；挂载文件路由
+├── lib/workspace-files.js   # /api/workspace-files(.download|.open) 三个路由
+├── assets/mobile-fix.css    # 移动端样式（每次请求读盘）
+├── assets/shell.js          # 移动端行为 + 抽屉里的「工作区文件」入口（每次请求读盘）
+└── test/smoke.mjs           # 挂载插件，断言注入内容 + 文件路由/越权拦截
 ```
 
 `lib/index.js` 通过 webserver 的 `tapIndex` 钩子改写 `index.html`；两个资源文件在**每次
-请求时读盘**，所以改样式只需刷新页面，不必重启服务。只有改 `lib/index.js` 本体才需要重启
-（Node 的 ESM 模块缓存）。
+请求时读盘**，所以改样式/前端行为只需刷新页面，不必重启服务。改 `lib/*.js`（路由、注入
+逻辑）需要重启（Node 的 ESM 模块缓存）。
 
 ## 兼容性
 
