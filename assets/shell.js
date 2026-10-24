@@ -219,6 +219,24 @@
     return tab;
   }
 
+  /** The session the GUI is showing (persisted by DSH in localStorage). */
+  function currentSessionId() {
+    try {
+      var raw = window.localStorage.getItem("dsh.sessions.current");
+      if (!raw) return "";
+      var parsed = JSON.parse(raw);
+      return typeof parsed.sessionId === "string" ? parsed.sessionId : "";
+    } catch (error) {
+      return "";
+    }
+  }
+
+  /** Page URL for the open session; the server defaults to that workspace. */
+  function filesPageUrl() {
+    var session = currentSessionId();
+    return "/api/workspace-files" + (session === "" ? "" : "?session=" + encodeURIComponent(session));
+  }
+
   function showFilesPanel() {
     var content = document.querySelector("[data-conversation-content]");
     var root = content === null ? null : content.parentElement;
@@ -229,10 +247,18 @@
       filesPanel.setAttribute("data-dsh-files-panel", "");
       filesPanel.style.cssText = "position:absolute;left:0;right:0;bottom:0;z-index:25;background:#16181c;";
       var frame = document.createElement("iframe");
-      frame.src = "/api/workspace-files";
       frame.title = FILES_LABEL;
       frame.style.cssText = "border:0;width:100%;height:100%;display:block;background:#16181c;";
       filesPanel.appendChild(frame);
+    }
+    // Follow the session the user switched to; leave in-frame navigation alone.
+    var iframe = filesPanel.firstElementChild;
+    if (iframe !== null) {
+      var session = currentSessionId();
+      if (iframe.getAttribute("data-dsh-session") !== session || iframe.getAttribute("src") === null) {
+        iframe.setAttribute("data-dsh-session", session);
+        iframe.src = filesPageUrl();
+      }
     }
     if (filesPanel.parentElement !== root) root.appendChild(filesPanel);
     var header = root.querySelector("header");

@@ -24,6 +24,10 @@ writeFileSync(join(workspace, "blob.bin"), Buffer.alloc(16, 0x00));
 mkdirSync(join(workspace, "sub"));
 writeFileSync(join(workspace, "sub", "inner.txt"), "inner file\n");
 
+// A second workspace, owned by the "current" session, to check the default.
+const otherWorkspace = mkdtempSync(join(tmpdir(), "dsh-mobile-shell-other-"));
+writeFileSync(join(otherWorkspace, "only-second.txt"), "second workspace\n");
+
 /** Read central-directory entries out of an archive produced by lib/zip.js. */
 function readZipEntries(buffer) {
 	let end = -1;
@@ -67,7 +71,12 @@ const taps = [];
 const routes = new Map();
 const ctx = {
 	webServer: { tapIndex: (transform) => taps.push(transform) },
-	workspaceRegistry: { list: () => [{ title: "tmp", path: workspace, sessionIds: [], createdAt: "", updatedAt: "" }] },
+	workspaceRegistry: {
+		list: () => [
+			{ title: "first", path: workspace, sessionIds: ["session-other"], createdAt: "", updatedAt: "" },
+			{ title: "second", path: otherWorkspace, sessionIds: ["session-current"], createdAt: "", updatedAt: "" },
+		],
+	},
 	connection: {
 		fetch: {
 			register(route) {
@@ -110,6 +119,26 @@ assert.ok(pageHtml.includes("hello.txt"), "page must list hello.txt");
 assert.ok(pageHtml.includes("sub/"), "page must list the sub directory");
 assert.ok(pageHtml.includes("workspace-files.zip"), "page must link the folder zip");
 assert.ok(pageHtml.includes("在资源管理器中打开"), "page must offer reveal");
+
+// The session decides the default workspace; an explicit w still wins.
+const sessionPage = await page.fetch(new Request("http://x/api/workspace-files?session=session-current"));
+const sessionHtml = await sessionPage.text();
+assert.ok(sessionHtml.includes("only-second.txt"), "session default must open its own workspace");
+assert.ok(!sessionHtml.includes("hello.txt"), "session default must not open the first workspace");
+
+const otherSession = await page.fetch(new Request("http://x/api/workspace-files?session=session-other"));
+assert.ok((await otherSession.text()).includes("hello.txt"), "other session must open the first workspace");
+
+const explicit = await page.fetch(new Request("http://x/api/workspace-files?session=session-current&w=0"));
+assert.ok((await explicit.text()).includes("hello.txt"), "explicit w must override the session default");
+
+const noParams = await page.fetch(new Request("http://x/api/workspace-files"));
+assert.ok((await noParams.text()).includes("hello.txt"), "without hints the first workspace is used");
+
+// An out-of-range w (stale bookmark) falls back to the first workspace.
+const staleIndex = await page.fetch(new Request("http://x/api/workspace-files?w=9"));
+assert.equal(staleIndex.status, 200);
+assert.ok((await staleIndex.text()).includes("hello.txt"), "stale workspace index should fall back");
 
 // ------------------------------------------------------------- preview pages ----
 
@@ -195,7 +224,6 @@ for (const [route, probe] of [
 	[view, "http://x/api/workspace-files.view?w=0&p=../../Windows/win.ini"],
 	[download, "http://x/api/workspace-files.download?w=0&p=../../Windows/win.ini"],
 	[zip, "http://x/api/workspace-files.zip?w=0&p=.."],
-	[page, "http://x/api/workspace-files?w=9&p="],
 ]) {
 	const response = await route.fetch(new Request(probe));
 	assert.ok(response.status >= 400, `${probe} should be refused, got ${response.status}`);

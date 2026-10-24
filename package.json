@@ -1,6 +1,6 @@
 {
   "name": "dsh-mobile-shell",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "DSH Web GUI mobile shell + workspace browser: polyfill, drawer overlay, page lock, no focus zoom, keyboard-aware composer, and a cookie-authenticated file tab with text/image/audio/video/PDF preview (HTTP Range), per-file download, folder zip and reveal-in-file-manager.",
   "license": "MIT",
   "type": "module",

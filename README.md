@@ -41,6 +41,10 @@ DSH 的 Web GUI 是按桌面设计的：打包后的前端 CSS 里**没有任何
 
 也可以绕过标签直接访问 `http://<你的地址>/api/workspace-files`。
 
+**默认定位到当前会话的工作区**：GUI 半边把 `dsh.sessions.current` 里的 session id 通过
+`?session=` 传给页面，服务端用 `workspaceRegistry` 的 `sessionIds` 反查，于是在哪个工作区
+聊天就打开哪个工作区（想换就点右上角下拉框；`w=` 显式指定优先；找不到/超界则回落到第一个）。
+
 页面会**跟随 DSH 的主题**：它被 GUI 以 iframe 嵌在同一个源里，所以直接读父页面的
 `body[data-ds-dark-theme]` 标记切换深/浅配色（独立打开时退回系统偏好），每秒同步一次，
 你在界面里换主题它也会跟着换。页面骨架本身的模板在 `assets/files-page.html`，和
