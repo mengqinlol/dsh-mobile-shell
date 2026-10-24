@@ -113,6 +113,45 @@
   }, true);
   syncKeyboardInset();
 
+  // ── rotation hygiene ──────────────────────────────────────────────────
+  // iOS can come back from a rotation with a stale visual-viewport scale or
+  // offset: the layout looks right but taps land where the *scaled* layout was
+  // ("UI and buttons are misaligned"). Rewriting the viewport meta forces
+  // WebKit to recompute the scale, and scrolling to the origin drops any
+  // leftover offset. Also clears a keyboard inset that outlived the keyboard.
+  function resetViewportAfterRotation() {
+    root.style.setProperty("--dsh-keyboard-inset", "0px");
+    var viewport = window.visualViewport;
+    var zoomed =
+      viewport !== undefined && viewport !== null &&
+      (Math.abs((viewport.scale === undefined ? 1 : viewport.scale) - 1) > 0.01 ||
+        Math.abs(viewport.offsetTop) > 1 ||
+        Math.abs(viewport.offsetLeft) > 1);
+    if (Math.abs(window.scrollY) > 1 || Math.abs(window.scrollX) > 1) window.scrollTo(0, 0);
+    if (!zoomed) return;
+    var meta = document.querySelector('meta[name="viewport"]');
+    if (meta === null) return;
+    // Two different strings, so WebKit must re-evaluate instead of ignoring a
+    // duplicate assignment.
+    meta.setAttribute("content", "width=device-width, initial-scale=1, user-scalable=no");
+    meta.setAttribute("content", "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover");
+    window.scrollTo(0, 0);
+  }
+
+  window.addEventListener("orientationchange", function () {
+    window.setTimeout(resetViewportAfterRotation, 120);
+    window.setTimeout(resetViewportAfterRotation, 450);
+    window.setTimeout(resetViewportAfterRotation, 1000);
+  });
+
+  // A resize that arrives without an orientationchange (address-bar show/hide,
+  // split view, iPad multitasking) can also leave a stale scale behind.
+  var rotationTimer = null;
+  window.addEventListener("resize", function () {
+    window.clearTimeout(rotationTimer);
+    rotationTimer = window.setTimeout(resetViewportAfterRotation, 300);
+  });
+
   // ── no autofocus when a conversation opens ─────────────────────────────
   // DSH focuses the composer whenever a session view mounts, which pops the
   // keyboard over the conversation the user just asked to read (and on iOS can

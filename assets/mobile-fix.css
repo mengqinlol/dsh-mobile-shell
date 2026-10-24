@@ -41,6 +41,9 @@
     z-index: 45; /* above the drawer scrim (35), below nothing else */
     margin: 10px 0 10px 10px;
     max-height: calc(100dvh - 20px);
+    /* A width restored from a wider (landscape) layout must not push the
+       drawer past the screen edge - that reads as "UI and taps are off". */
+    max-width: calc(100vw - 20px);
     border-radius: 16px;
     overflow: hidden;
     box-shadow:
