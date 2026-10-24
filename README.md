@@ -48,12 +48,33 @@ DSH 的 Web GUI 是按桌面设计的：打包后的前端 CSS 里**没有任何
 
 | 路由 | 作用 |
 |---|---|
-| `GET /api/workspace-files` | 网页版文件浏览：工作区切换、面包屑、目录列表（文件夹优先，显示大小/时间） |
+| `GET /api/workspace-files` | 网页版文件浏览：工作区切换、面包屑、目录列表；**点文件进入预览页** |
+| `GET /api/workspace-files.view?w=&p=` | 行内流（`content-disposition: inline`）+ **HTTP Range**，给 `<img>` / `<video>` / `<audio>` / PDF 用 |
 | `GET /api/workspace-files.download?w=&p=` | 以附件下载文件（`content-disposition`，中文名走 `filename*=UTF-8''`） |
 | `GET /api/workspace-files.zip?w=&p=` | 把当前文件夹**流式打包成 zip**（无依赖实现：`zlib` + 自写 ZIP 容器；文本走 DEFLATE，>64 MB 的媒体走 STORE） |
 | `POST /api/workspace-files.open?w=&p=` | 在**宿主机**的资源管理器 / Finder 里打开该文件夹 |
 
 `w` 是工作区序号（页面下拉框里的顺序），`p` 是相对工作区根的路径。
+
+### 预览
+
+点文件不再直接下载，而是进入预览页（左上角「← 返回」回目录，「⬇ 下载」随时可存）：
+
+| 类型 | 预览方式 |
+|---|---|
+| 文本/代码（md、json、js、ts、css、yml、csv、py、ps1 …） | 内联 `<pre>`（等宽、可滚动，上限 2 MB） |
+| 图片（png/jpg/gif/webp/svg/bmp/avif） | `<img>` |
+| 视频（mp4/mov/webm/ogv） | `<video controls playsinline preload=metadata>` |
+| 音频（mp3/wav/m4a/ogg/flac） | `<audio controls>` |
+| PDF | 内嵌 `<iframe>`（Safari 原生渲染） |
+| 其它 | 提示不支持预览 + 下载按钮 |
+
+**视频不难，难的是 Range**：`<video>` 要拖动进度条就得有 `206 Partial Content`，Safari
+甚至不给 Range 就不播。`workspace-files.view` 实现了单区间 Range（`bytes=a-b`、`bytes=a-`、
+`bytes=-n`，越界回 `416` + `Content-Range: bytes */size`），所以能直接拖进度条。
+
+![视频预览](docs/preview-video.png)
+![文本预览](docs/preview-text.png)
 
 zip 的边界（都是明确的报错，不会吐半截坏包）：条目数 ≤ 20000、总大小 ≤ 3.5 GiB、不支持
 ZIP64；打包前先扫描，超限直接 `413`。实测 8.7 MB / 177 个文件的目录耗时约 0.5 秒，用

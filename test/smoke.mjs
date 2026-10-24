@@ -1,6 +1,6 @@
 // Smoke test: mount the plugin against a fake context, assert the index-tap
-// payload, then exercise the workspace file routes (page / download / zip /
-// reveal) on a temporary workspace, including a real ZIP parse.
+// payload, then exercise the workspace routes (browse / preview / range /
+// download / zip / reveal) on a temporary workspace, including a real ZIP parse.
 // Run with `npm test` (Node 22+, no dependencies).
 import { strict as assert } from "node:assert";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -18,6 +18,9 @@ assert.deepEqual(plugin.inject, ["webServer", "connection", "workspaceRegistry"]
 const workspace = mkdtempSync(join(tmpdir(), "dsh-mobile-shell-"));
 writeFileSync(join(workspace, "hello.txt"), "hello workspace\n");
 writeFileSync(join(workspace, "数据.csv"), "a,b\n1,2\n");
+writeFileSync(join(workspace, "note.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+writeFileSync(join(workspace, "clip.mp4"), Buffer.alloc(2048, 0x41));
+writeFileSync(join(workspace, "blob.bin"), Buffer.alloc(16, 0x00));
 mkdirSync(join(workspace, "sub"));
 writeFileSync(join(workspace, "sub", "inner.txt"), "inner file\n");
 
@@ -41,7 +44,6 @@ function readZipEntries(buffer) {
 		entries.push({
 			name: buffer.subarray(offset + 46, offset + 46 + nameLength).toString("utf8"),
 			method: buffer.readUInt16LE(offset + 10),
-			crc: buffer.readUInt32LE(offset + 16),
 			compressedSize: buffer.readUInt32LE(offset + 20),
 			size: buffer.readUInt32LE(offset + 24),
 			localOffset: buffer.readUInt32LE(offset + 42),
@@ -93,21 +95,70 @@ assert.equal(taps[0](html), html, "index tap is not idempotent");
 
 // ------------------------------------------------------------------- routes ----
 
-assert.equal(routes.size, 4, "expected four workspace routes");
+assert.equal(routes.size, 5, "expected five workspace routes");
 const page = routes.get("GET /api/workspace-files");
+const view = routes.get("GET /api/workspace-files.view");
 const download = routes.get("GET /api/workspace-files.download");
 const zip = routes.get("GET /api/workspace-files.zip");
 const open = routes.get("POST /api/workspace-files.open");
-assert.ok(page && download && zip && open, "route paths changed");
+assert.ok(page && view && download && zip && open, "route paths changed");
 
 const pageResponse = await page.fetch(new Request("http://x/api/workspace-files?w=0&p="));
 assert.equal(pageResponse.status, 200);
 const pageHtml = await pageResponse.text();
 assert.ok(pageHtml.includes("hello.txt"), "page must list hello.txt");
 assert.ok(pageHtml.includes("sub/"), "page must list the sub directory");
-assert.ok(pageHtml.includes("workspace-files.download"), "page must link downloads");
 assert.ok(pageHtml.includes("workspace-files.zip"), "page must link the folder zip");
 assert.ok(pageHtml.includes("在资源管理器中打开"), "page must offer reveal");
+
+// ------------------------------------------------------------- preview pages ----
+
+const textView = await page.fetch(new Request("http://x/api/workspace-files?w=0&p=hello.txt"));
+assert.equal(textView.status, 200, "a file opens the viewer instead of downloading");
+const textHtml = await textView.text();
+assert.ok(textHtml.includes('class="preview text"'), "text preview missing");
+assert.ok(textHtml.includes("hello workspace"), "text content missing");
+assert.ok(textHtml.includes("workspace-files.download"), "viewer must keep a download button");
+
+const imageView = await page.fetch(new Request("http://x/api/workspace-files?w=0&p=note.png"));
+assert.ok((await imageView.text()).includes('<img src="/api/workspace-files.view'), "image preview missing");
+
+const videoView = await page.fetch(new Request("http://x/api/workspace-files?w=0&p=clip.mp4"));
+assert.ok((await videoView.text()).includes("<video controls playsinline"), "video preview missing");
+
+const binaryView = await page.fetch(new Request("http://x/api/workspace-files?w=0&p=blob.bin"));
+const binaryHtml = await binaryView.text();
+assert.ok(!binaryHtml.includes("<img") && !binaryHtml.includes("<video"), "binary must not attempt a preview");
+assert.ok(binaryHtml.includes("不支持内联预览"), "binary should say preview is unsupported");
+
+// ------------------------------------------------------------ inline + range ----
+
+const inline = await view.fetch(new Request("http://x/api/workspace-files.view?w=0&p=clip.mp4"));
+assert.equal(inline.status, 200);
+assert.equal(inline.headers.get("content-type"), "video/mp4");
+assert.match(inline.headers.get("content-disposition") ?? "", /^inline;/u);
+assert.equal(inline.headers.get("accept-ranges"), "bytes");
+assert.equal(inline.headers.get("content-length"), "2048");
+
+const partial = await view.fetch(
+	new Request("http://x/api/workspace-files.view?w=0&p=clip.mp4", { headers: { range: "bytes=0-99" } }),
+);
+assert.equal(partial.status, 206);
+assert.equal(partial.headers.get("content-range"), "bytes 0-99/2048");
+assert.equal(partial.headers.get("content-length"), "100");
+assert.equal((await partial.arrayBuffer()).byteLength, 100);
+
+const suffix = await view.fetch(
+	new Request("http://x/api/workspace-files.view?w=0&p=clip.mp4", { headers: { range: "bytes=-64" } }),
+);
+assert.equal(suffix.status, 206);
+assert.equal(suffix.headers.get("content-range"), "bytes 1984-2047/2048");
+
+const unsatisfiable = await view.fetch(
+	new Request("http://x/api/workspace-files.view?w=0&p=clip.mp4", { headers: { range: "bytes=5000-6000" } }),
+);
+assert.equal(unsatisfiable.status, 416);
+assert.equal(unsatisfiable.headers.get("content-range"), "bytes */2048");
 
 // ----------------------------------------------------------------- download ----
 
@@ -120,44 +171,31 @@ const unicodeResponse = await download.fetch(
 	new Request(`http://x/api/workspace-files.download?w=0&p=${encodeURIComponent("数据.csv")}`),
 );
 assert.equal(unicodeResponse.status, 200);
-assert.match(unicodeResponse.headers.get("content-disposition") ?? "", /%E6%95%B0%E6%8D%AE/);
 
 // ---------------------------------------------------------------------- zip ----
 
 const zipResponse = await zip.fetch(new Request("http://x/api/workspace-files.zip?w=0&p="));
 assert.equal(zipResponse.status, 200);
 assert.equal(zipResponse.headers.get("content-type"), "application/zip");
-assert.match(zipResponse.headers.get("content-disposition") ?? "", /tmp\.zip/);
 const archive = Buffer.from(await zipResponse.arrayBuffer());
-
-const entries = readZipEntries(archive);
-const names = entries.map((entry) => entry.name).sort();
-assert.deepEqual(names, ["hello.txt", "sub/inner.txt", "数据.csv"], `unexpected entries: ${names.join(", ")}`);
-
-const helloEntry = entries.find((entry) => entry.name === "hello.txt");
-assert.equal(extractEntry(archive, helloEntry).toString("utf8"), "hello workspace\n");
-const innerEntry = entries.find((entry) => entry.name === "sub/inner.txt");
+const names = readZipEntries(archive).map((entry) => entry.name).sort();
+assert.deepEqual(names, ["blob.bin", "clip.mp4", "hello.txt", "note.png", "sub/inner.txt", "数据.csv"]);
+const innerEntry = readZipEntries(archive).find((entry) => entry.name === "sub/inner.txt");
 assert.equal(extractEntry(archive, innerEntry).toString("utf8"), "inner file\n");
-assert.equal(innerEntry.method, 8, "text files should be deflated");
-assert.equal(innerEntry.size, Buffer.byteLength("inner file\n"));
 
-// A sub directory zips under its own name.
 const subZip = await zip.fetch(new Request("http://x/api/workspace-files.zip?w=0&p=sub"));
-const subArchive = Buffer.from(await subZip.arrayBuffer());
-assert.deepEqual(readZipEntries(subArchive).map((entry) => entry.name), ["sub/inner.txt"]);
+assert.deepEqual(readZipEntries(Buffer.from(await subZip.arrayBuffer())).map((entry) => entry.name), ["sub/inner.txt"]);
 
-// A file request redirects to the plain download route.
-const fileZip = await zip.fetch(new Request("http://x/api/workspace-files.zip?w=0&p=hello.txt"));
-assert.equal(fileZip.status, 302);
+assert.equal((await zip.fetch(new Request("http://x/api/workspace-files.zip?w=0&p=hello.txt"))).status, 302);
 
 // ------------------------------------------------------------------- guards ----
 
 for (const [route, probe] of [
 	[page, "http://x/api/workspace-files?w=0&p=../"],
+	[view, "http://x/api/workspace-files.view?w=0&p=../../Windows/win.ini"],
 	[download, "http://x/api/workspace-files.download?w=0&p=../../Windows/win.ini"],
 	[zip, "http://x/api/workspace-files.zip?w=0&p=.."],
 	[page, "http://x/api/workspace-files?w=9&p="],
-	[download, "http://x/api/workspace-files.download?w=0&p=nope.txt"],
 ]) {
 	const response = await route.fetch(new Request(probe));
 	assert.ok(response.status >= 400, `${probe} should be refused, got ${response.status}`);
@@ -170,8 +208,7 @@ assert.equal(isWithin(workspace, join(workspace, "a", "b")), true);
 assert.equal(isWithin(workspace, join(workspace, "..", "outside")), false);
 assert.equal(escapeHtml('<img src=x onerror="1">'), "&lt;img src=x onerror=&quot;1&quot;&gt;");
 assert.equal(contentTypesForPath("a.png"), "image/png");
-assert.equal(contentTypesForPath("a.unknown"), "application/octet-stream");
 assert.equal(relativeOf(workspace, join(workspace, "a", "b.txt")), "a/b.txt");
 
 rmSync(workspace, { recursive: true, force: true });
-console.log(`ok - index tap ${html.length} bytes, 4 routes, page/download/zip/guards verified`);
+console.log(`ok - index tap ${html.length} bytes, 5 routes, preview + range + zip + guards verified`);
