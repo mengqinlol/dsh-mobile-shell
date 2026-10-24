@@ -74,7 +74,7 @@ const ctx = {
 	workspaceRegistry: {
 		list: () => [
 			{ title: "first", path: workspace, sessionIds: ["session-other"], createdAt: "", updatedAt: "" },
-			{ title: "second", path: otherWorkspace, sessionIds: ["session-current"], createdAt: "", updatedAt: "" },
+			{ title: "default-workspace", path: otherWorkspace, sessionIds: ["session-current"], createdAt: "", updatedAt: "" },
 		],
 	},
 	connection: {
@@ -125,6 +125,9 @@ const sessionPage = await page.fetch(new Request("http://x/api/workspace-files?s
 const sessionHtml = await sessionPage.text();
 assert.ok(sessionHtml.includes("only-second.txt"), "session default must open its own workspace");
 assert.ok(!sessionHtml.includes("hello.txt"), "session default must not open the first workspace");
+// The automatic title renders as the localized default name, like the GUI does.
+assert.ok(sessionHtml.includes("默认工作区"), "default workspace must show the localized label");
+assert.ok(!sessionHtml.includes(">default-workspace<"), "raw automatic title must not leak into the UI");
 
 const otherSession = await page.fetch(new Request("http://x/api/workspace-files?session=session-other"));
 assert.ok((await otherSession.text()).includes("hello.txt"), "other session must open the first workspace");
