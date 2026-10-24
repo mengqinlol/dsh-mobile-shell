@@ -1,0 +1,215 @@
+/* Mobile layout fixes for the DSH Web GUI, injected by the local fork of
+ * dsh-lan-access (which no longer ships its own DEVICE_CSS typography layer -
+ * everything below is this machine's own mobile stylesheet).
+ *
+ * Findings that drive these rules (measured with tools/shot.mjs at 390x844):
+ *   - The shell is a CSS grid whose column widths are INLINE styles
+ *     (grid-template-columns: 280px minmax(0,1fr) 0), so an expanded sidebar
+ *     squeezes the conversation to ~110px. Only !important can cap it.
+ *   - Both the grid item and the frame set overflow:hidden, which clips the
+ *     expanded panel back to the 56px icon rail ("tapping does nothing").
+ *   - The diagnostic pill row under the composer (rounds / cache hit / tide
+ *     price / context) is the only element that makes the conversation
+ *     scroller horizontally scrollable (scrollWidth 357 > clientWidth 327), so
+ *     that row is what lets a vertical swipe pan sideways.
+ * Every rule is scoped to <=820px so the desktop layout is untouched. */
+
+@media (max-width: 820px) {
+  /* ── 1. The conversation keeps the full width; panels overlay it ── */
+  div:has(> div > [data-slot="sidebar"]),
+  .BynINW_frame {
+    grid-template-columns: 56px minmax(0, 1fr) 0 !important;
+    overflow: visible !important;
+  }
+
+  div:has(> [data-slot="sidebar"]),
+  .BynINW_sidebarCol {
+    position: relative;
+    /* No z-index here: a stacking context on the whole column would paint the
+       56px rail - and the 10px margin left of the drawer - ABOVE the scrim,
+       leaving an undimmed strip at the screen edge. The expanded panel gets the
+       stacking order instead (below). */
+    z-index: auto;
+    overflow: visible !important;
+  }
+
+  /* ── 2. Expanded sidebar = floating card pinned to the top-left ──
+   * Only the expanded state is styled: the collapsed rail keeps its usual
+   * 56px column, so nothing shifts when it is closed. */
+  [data-slot="sidebar"] > div:not([class*="collapsed"]) {
+    position: relative;
+    z-index: 45; /* above the drawer scrim (35), below nothing else */
+    margin: 10px 0 10px 10px;
+    max-height: calc(100dvh - 20px);
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow:
+      0 0 0 1px rgba(255, 255, 255, 0.08),
+      0 18px 48px rgba(0, 0, 0, 0.6);
+  }
+
+  /* ── 3. Kill the horizontal-swipe trap ──
+   * The pill row is the sole source of horizontal scrollability in the
+   * conversation, and it also collapses into vertical text on a phone. */
+  [data-slot="conversation.composer.dock"],
+  div:has(> span[class*="iq1doa_anchor"]) {
+    display: none !important;
+  }
+
+  /* ── 3a. The page itself never moves; only the conversation scrolls ──
+   * The document is already exactly viewport-sized, but iOS Safari still
+   * rubber-bands it (and collapses the toolbar) when a swipe starts on a
+   * non-scrollable part - the header, the icon rail, the gap around the
+   * composer. Pinning html/body to the viewport with no overflow removes the
+   * page as a scroll surface entirely, so the gesture belongs to the
+   * conversation. */
+  html {
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+
+  body {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+
+  /* Only the conversation scroller pans, and reaching its ends must not chain
+     the gesture back to the page (that chain is what bounced the window). */
+  div:has(> [data-chat-flow]),
+  [data-slot="conversation"],
+  [class*="_scrollBody"] {
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  html,
+  body {
+    overflow-x: hidden;
+    overscroll-behavior-x: none;
+  }
+
+  /* Belt and braces: whatever slips through must scroll inside itself, not
+     turn the conversation into a horizontally pannable surface. */
+  div:has(> [data-chat-flow]) {
+    overflow-x: hidden;
+  }
+
+  [data-slot="main"],
+  [data-slot="main.conversation"],
+  [data-chat-flow] {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  [data-chat-flow] pre,
+  [data-chat-flow] table,
+  [data-chat-flow] [class*="code"] {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  /* ── 4. Composer clears the home indicator ── */
+  [data-slot="conversation"] [data-phase] {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  /* ── 5. Dialogs use the screen instead of squeezing two columns ──
+   * Settings is a nav column + content column; at 342px the content collapses
+   * into vertical text ("充值余额" stacked one glyph per line). The structure
+   * below is adapted from dsh-lan-access's DEVICE_CSS (MIT, Leon0555) minus its
+   * font shrinking. */
+  [role="dialog"][aria-modal="true"] {
+    display: flex;
+    flex-direction: column;
+    width: 100vw;
+    height: 100dvh;
+    max-width: 100vw;
+    max-height: 100dvh;
+    border-radius: 0;
+  }
+
+  [role="presentation"]:has([role="dialog"]) {
+    padding: 0;
+  }
+
+  [role="dialog"][aria-modal="true"] nav {
+    width: 100%;
+    flex: none;
+    flex-direction: column;
+    gap: 6px;
+    padding: 10px 12px 6px;
+  }
+
+  [role="dialog"][aria-modal="true"] nav > div:last-child {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    gap: 4px;
+  }
+
+  [role="dialog"][aria-modal="true"] > div:last-child {
+    flex: 1;
+    min-height: 0;
+  }
+
+  [role="dialog"][aria-modal="true"] > div:last-child > div:last-child {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+  }
+
+  /* ── 6. Touch niceties + no focus zoom ──
+   * iOS Safari zooms the whole page when the focused field computes below
+   * 16px. The composer is a contenteditable DIV (not an input), so it needs
+   * the rule too - measured at 14px before this.
+   * touch-action removes the 300ms double-tap delay on the big buttons. */
+  html,
+  body {
+    -webkit-text-size-adjust: 100%;
+    touch-action: pan-y;
+  }
+
+  [data-slot="conversation"] input,
+  [data-slot="conversation"] textarea,
+  [data-slot="conversation"] [contenteditable="true"],
+  [data-composer-card] input,
+  [data-composer-card] textarea,
+  [data-composer-card] [contenteditable="true"],
+  [role="dialog"] input,
+  [role="dialog"] textarea,
+  [role="dialog"] [contenteditable="true"] {
+    font-size: 16px !important;
+    line-height: 1.45;
+  }
+
+  [data-slot="conversation"] button,
+  [data-slot="sidebar"] button {
+    min-height: 32px;
+    touch-action: manipulation;
+  }
+
+  [data-slot="conversation"],
+  [data-slot="sidebar"] {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* ── 7. Keep the composer above the on-screen keyboard ──
+   * iOS does not shrink the layout viewport for the keyboard. Shrinking the
+   * SHELL height to visualViewport.height collapsed the whole layout into a
+   * sliver on iOS (transient/keyboard-animation values), so the shell keeps its
+   * full height and only the conversation column is shifted up by the measured
+   * keyboard inset (--dsh-keyboard-inset, clamped by the injected script).
+   * Shifting the column rather than the composer alone avoids the composer's
+   * own clipping ancestors cutting it off. */
+  div:has(> div > [data-slot="sidebar"]) > div:nth-child(2),
+  .BynINW_centerCol {
+    transform: translate3d(0, calc(-1 * var(--dsh-keyboard-inset, 0px)), 0);
+    transition: transform 120ms ease-out;
+  }
+}

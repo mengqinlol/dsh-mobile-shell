@@ -1,0 +1,43 @@
+{
+  "name": "dsh-mobile-shell",
+  "version": "0.1.0",
+  "description": "DSH Web GUI mobile shell: crypto.randomUUID polyfill for non-secure contexts, floating sidebar drawer, page lock, no focus zoom, keyboard-aware composer.",
+  "license": "MIT",
+  "type": "module",
+  "main": "lib/index.js",
+  "files": [
+    "lib",
+    "assets",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node test/smoke.mjs"
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "mobile",
+    "iphone",
+    "ios",
+    "safari"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mengqinlol/dsh-mobile-shell.git"
+  },
+  "homepage": "https://github.com/mengqinlol/dsh-mobile-shell#readme",
+  "bugs": {
+    "url": "https://github.com/mengqinlol/dsh-mobile-shell/issues"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}
