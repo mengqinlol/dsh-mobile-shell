@@ -1,7 +1,7 @@
 {
   "name": "dsh-mobile-shell",
-  "version": "0.2.0",
-  "description": "DSH Web GUI mobile shell: crypto.randomUUID polyfill for non-secure contexts, floating sidebar drawer, page lock, no focus zoom, keyboard-aware composer, plus a cookie-authenticated workspace file browser with download and reveal-in-file-manager.",
+  "version": "0.3.0",
+  "description": "DSH Web GUI mobile shell: crypto.randomUUID polyfill for non-secure contexts, floating sidebar drawer, page lock, no focus zoom, keyboard-aware composer, plus a cookie-authenticated workspace browser with per-file download, folder zip and reveal-in-file-manager.",
   "license": "MIT",
   "type": "module",
   "main": "lib/index.js",

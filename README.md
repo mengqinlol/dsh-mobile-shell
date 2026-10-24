@@ -41,9 +41,14 @@ DSH 的 Web GUI 是按桌面设计的：打包后的前端 CSS 里**没有任何
 |---|---|
 | `GET /api/workspace-files` | 网页版文件浏览：工作区切换、面包屑、目录列表（文件夹优先，显示大小/时间） |
 | `GET /api/workspace-files.download?w=&p=` | 以附件下载文件（`content-disposition`，中文名走 `filename*=UTF-8''`） |
+| `GET /api/workspace-files.zip?w=&p=` | 把当前文件夹**流式打包成 zip**（无依赖实现：`zlib` + 自写 ZIP 容器；文本走 DEFLATE，>64 MB 的媒体走 STORE） |
 | `POST /api/workspace-files.open?w=&p=` | 在**宿主机**的资源管理器 / Finder 里打开该文件夹 |
 
 `w` 是工作区序号（页面下拉框里的顺序），`p` 是相对工作区根的路径。
+
+zip 的边界（都是明确的报错，不会吐半截坏包）：条目数 ≤ 20000、总大小 ≤ 3.5 GiB、不支持
+ZIP64；打包前先扫描，超限直接 `413`。实测 8.7 MB / 177 个文件的目录耗时约 0.5 秒，用
+Windows 自带解压器解开后文本逐字节一致、PNG 完好。
 
 安全设计：
 
@@ -82,10 +87,11 @@ dsh-mobile-shell/
 ├── package.json             # dsh.bundle.patch → cordis.patch.yml
 ├── cordis.patch.yml         # 只插入自己这一行，不动任何其它行
 ├── lib/index.js             # index tap：polyfill + <style> + <script>；挂载文件路由
-├── lib/workspace-files.js   # /api/workspace-files(.download|.open) 三个路由
+├── lib/workspace-files.js   # /api/workspace-files(.download|.zip|.open) 四个路由
+├── lib/zip.js               # 无依赖流式 ZIP 写入（CRC32 + zlib DEFLATE + central directory）
 ├── assets/mobile-fix.css    # 移动端样式（每次请求读盘）
 ├── assets/shell.js          # 移动端行为 + 抽屉里的「工作区文件」入口（每次请求读盘）
-└── test/smoke.mjs           # 挂载插件，断言注入内容 + 文件路由/越权拦截
+└── test/smoke.mjs           # 挂载插件，断言注入内容 + 文件路由/zip/越权拦截
 ```
 
 `lib/index.js` 通过 webserver 的 `tapIndex` 钩子改写 `index.html`；两个资源文件在**每次
