@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>{{TITLE}}</title>
+<style>
+  /* Colours are variables so the page can follow DSH's own theme: the script
+     below reads the parent document (same origin) and sets data-dsh-theme. */
+  :root {
+    color-scheme: dark;
+    --bg: #16181c; --fg: #e8eaed; --soft: #b6bcc6; --muted: #8b929d; --line: #24272d;
+    --ctl: #262a31; --ctl-border: #3c424b; --ctl-active: #333842;
+    --link: #8ab4f8; --error: #f28b82; --toast: #2c313a;
+  }
+  html[data-dsh-theme="light"] {
+    color-scheme: light;
+    --bg: #ffffff; --fg: #1f2328; --soft: #57606a; --muted: #6e7781; --line: #eaecef;
+    --ctl: #f6f8fa; --ctl-border: #d0d7de; --ctl-active: #eaeef2;
+    --link: #0969da; --error: #cf222e; --toast: #ffffff;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 16px 14px calc(24px + env(safe-area-inset-bottom)); font: 15px/1.5 -apple-system, "Segoe UI", system-ui, sans-serif; background: var(--bg); color: var(--fg); }
+  a { color: var(--link); text-decoration: none; }
+  header { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 14px; }
+  h1 { font-size: 18px; margin: 0; font-weight: 600; }
+  .grow { flex: 1 1 auto; }
+  select, button { font: inherit; color: inherit; background: var(--ctl); border: 1px solid var(--ctl-border); border-radius: 8px; padding: 8px 10px; }
+  button { cursor: pointer; }
+  button:active { background: var(--ctl-active); }
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 2px 0 10px; }
+  a.btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: 8px; background: var(--ctl); border: 1px solid var(--ctl-border); color: inherit; }
+  a.btn:active { background: var(--ctl-active); }
+  .crumbs { margin: 0 0 10px; font-size: 14px; color: var(--soft); word-break: break-all; }
+  .crumbs a { color: var(--link); }
+  ul { list-style: none; margin: 0; padding: 0; }
+  li { border-bottom: 1px solid var(--line); }
+  li a, li span.row { display: flex; align-items: center; gap: 10px; padding: 12px 4px; min-height: 46px; }
+  li a { color: inherit; }
+  .icon { width: 20px; text-align: center; flex: none; opacity: .85; }
+  .label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .meta { flex: none; font-size: 12px; color: var(--muted); text-align: right; }
+  .empty, .error { padding: 24px 4px; color: var(--soft); }
+  .error { color: var(--error); }
+  .hint { margin-top: 16px; font-size: 12px; color: var(--muted); }
+  #toast { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom)); transform: translateX(-50%); background: var(--toast); color: var(--fg); border: 1px solid var(--ctl-border); border-radius: 10px; padding: 10px 14px; font-size: 13px; opacity: 0; transition: opacity .18s; pointer-events: none; max-width: 90vw; box-shadow: 0 8px 24px rgba(0,0,0,.18); }
+  #toast.show { opacity: 1; }
+</style>
+<script>
+(function () {
+  // Follow DSH's theme. This page is framed by the GUI (same origin), so read
+  // the parent's marker - `body[data-ds-dark-theme]` - and mirror it; when the
+  // page is opened standalone fall back to the OS preference. Polled because
+  // the user can switch themes while the tab is open.
+  function detect() {
+    try {
+      var doc = window.parent !== window && window.parent ? window.parent.document : null;
+      if (doc !== null && doc.body !== null) {
+        if (doc.body.hasAttribute("data-ds-dark-theme")) return "dark";
+        var scheme = window.getComputedStyle(doc.documentElement).colorScheme || "";
+        if (scheme !== "") return scheme.indexOf("dark") >= 0 ? "dark" : "light";
+      }
+    } catch (error) {
+      /* cross-origin - fall through to the OS preference */
+    }
+    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  }
+  function sync() {
+    var theme = detect();
+    if (document.documentElement.getAttribute("data-dsh-theme") !== theme) {
+      document.documentElement.setAttribute("data-dsh-theme", theme);
+    }
+  }
+  sync();
+  window.setInterval(sync, 1000);
+})();
+</script>
+</head>
+<body>
+{{BODY}}
+<div id="toast"></div>
+<script>
+function toast(message) {
+  var el = document.getElementById('toast');
+  el.textContent = message;
+  el.classList.add('show');
+  clearTimeout(window.__toastTimer);
+  window.__toastTimer = setTimeout(function () { el.classList.remove('show'); }, 2400);
+}
+async function revealFolder(index, path) {
+  try {
+    var response = await fetch('{{OPEN_PATH}}?w=' + index + '&p=' + encodeURIComponent(path), { method: 'POST' });
+    var data = await response.json().catch(function () { return {}; });
+    toast(response.ok ? ('已在本机打开：' + (data.path || '')) : ('打开失败：' + (data.error || response.status)));
+  } catch (error) {
+    toast('打开失败：' + error.message);
+  }
+}
+</script>
+</body>
+</html>

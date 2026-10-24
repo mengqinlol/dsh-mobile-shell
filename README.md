@@ -41,6 +41,11 @@ DSH 的 Web GUI 是按桌面设计的：打包后的前端 CSS 里**没有任何
 
 也可以绕过标签直接访问 `http://<你的地址>/api/workspace-files`。
 
+页面会**跟随 DSH 的主题**：它被 GUI 以 iframe 嵌在同一个源里，所以直接读父页面的
+`body[data-ds-dark-theme]` 标记切换深/浅配色（独立打开时退回系统偏好），每秒同步一次，
+你在界面里换主题它也会跟着换。页面骨架本身的模板在 `assets/files-page.html`，和
+`mobile-fix.css` / `shell.js` 一样**每次请求读盘**，改样式只需刷新。
+
 | 路由 | 作用 |
 |---|---|
 | `GET /api/workspace-files` | 网页版文件浏览：工作区切换、面包屑、目录列表（文件夹优先，显示大小/时间） |
@@ -93,6 +98,7 @@ dsh-mobile-shell/
 ├── lib/index.js             # index tap：polyfill + <style> + <script>；挂载文件路由
 ├── lib/workspace-files.js   # /api/workspace-files(.download|.zip|.open) 四个路由
 ├── lib/zip.js               # 无依赖流式 ZIP 写入（CRC32 + zlib DEFLATE + central directory）
+├── assets/files-page.html   # 文件浏览页模板（每次请求读盘）
 ├── assets/mobile-fix.css    # 移动端样式（每次请求读盘）
 ├── assets/shell.js          # 移动端行为 + 抽屉里的「工作区文件」入口（每次请求读盘）
 └── test/smoke.mjs           # 挂载插件，断言注入内容 + 文件路由/zip/越权拦截

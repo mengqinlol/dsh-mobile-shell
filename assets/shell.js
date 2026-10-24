@@ -237,6 +237,13 @@
     if (filesPanel.parentElement !== root) root.appendChild(filesPanel);
     var header = root.querySelector("header");
     filesPanel.style.top = String(Math.round(header === null ? 76 : header.getBoundingClientRect().height)) + "px";
+    // Match the app background so the iframe edge does not show a theme seam.
+    var background = window.getComputedStyle(document.body).backgroundColor;
+    if (background && background !== "rgba(0, 0, 0, 0)") {
+      filesPanel.style.background = background;
+      var frame = filesPanel.firstElementChild;
+      if (frame !== null) frame.style.background = background;
+    }
   }
 
   function hideFilesPanel() {

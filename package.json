@@ -1,6 +1,6 @@
 {
   "name": "dsh-mobile-shell",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "DSH Web GUI mobile shell: crypto.randomUUID polyfill for non-secure contexts, floating sidebar drawer, page lock, no focus zoom, keyboard-aware composer, plus a cookie-authenticated workspace browser (tab next to 对话/轨迹) with download, folder zip and reveal-in-file-manager.",
   "license": "MIT",
   "type": "module",
