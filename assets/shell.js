@@ -169,24 +169,25 @@
     }
 
     // Workspace-file browser entry: an absolutely positioned row inside the
-    // drawer, so it needs no DSH DOM surgery and disappears with the drawer.
-    // The page itself is served by this plugin at /api/workspace-files and
-    // rides the same session cookie as the GUI.
+    // sidebar panel, so it needs no DSH DOM surgery. On a phone it lives in the
+    // drawer; on a desktop window the sidebar is always expanded, so the same
+    // row is visible there too (deliberately no narrow-screen gate).
     var filesLink = null;
     var syncFilesLink = function () {
-      if (!narrow.matches) {
-        if (filesLink !== null) { filesLink.remove(); filesLink = null; }
-        return;
-      }
-      var open = panel.getBoundingClientRect().width > 100;
-      if (!open || !panel.isConnected) {
+      var open = panel.isConnected && panel.getBoundingClientRect().width > 100;
+      if (!open) {
         if (filesLink !== null) { filesLink.remove(); filesLink = null; }
         return;
       }
       if (filesLink !== null && filesLink.isConnected) return;
+      // The drawer CSS makes the panel `position: relative` only on narrow
+      // screens; a desktop sidebar is static, where `left/right` would resolve
+      // against the window instead of the sidebar.
+      if (window.getComputedStyle(panel).position === "static") panel.style.position = "relative";
       filesLink = document.createElement("a");
       filesLink.href = "/api/workspace-files";
       filesLink.textContent = "📁 工作区文件";
+      filesLink.title = "浏览 / 下载 / 打包工作区文件";
       filesLink.setAttribute("data-dsh-files-link", "");
       filesLink.style.cssText =
         "position:absolute;left:12px;right:12px;bottom:72px;display:flex;align-items:center;" +
