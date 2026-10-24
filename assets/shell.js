@@ -160,6 +160,151 @@
     }, 100);
   }, true);
 
+  // ── workspace files as a third conversation tab ─────────────────────────
+  // The chat area has a tab strip (对话 / 轨迹). We append a sibling tab that
+  // shows the file browser in an iframe over the conversation body, so switching
+  // tabs feels in-app instead of leaving the SPA.
+  var FILES_LABEL = "工作区文件";
+  var filesActive = false;
+  var filesPanel = null;
+  var savedActiveTab = null;
+
+  function findTablist() {
+    return document.querySelector('[role="tablist"][data-conversation-tabs]');
+  }
+
+  function tablistTabs(tablist) {
+    return Array.prototype.slice.call(tablist.querySelectorAll('[role="tab"]'));
+  }
+
+  function nativeTabs(tablist) {
+    return tablistTabs(tablist).filter(function (tab) {
+      return tab.getAttribute("data-dsh-files-tab") === null;
+    });
+  }
+
+  /** The class DSH uses to mark the selected tab (hash-suffixed, so read it). */
+  function activeClassOf(tablist) {
+    var tabs = nativeTabs(tablist);
+    var on = tabs.filter(function (tab) { return tab.getAttribute("aria-selected") === "true"; })[0];
+    var off = tabs.filter(function (tab) { return tab.getAttribute("aria-selected") !== "true"; })[0];
+    if (!on || !off) return null;
+    for (var index = 0; index < on.classList.length; index += 1) {
+      if (!off.classList.contains(on.classList[index])) return on.classList[index];
+    }
+    return null;
+  }
+
+  function ensureFilesTab() {
+    var tablist = findTablist();
+    if (tablist === null) return null;
+    var existing = tablist.querySelector("[data-dsh-files-tab]");
+    if (existing !== null) return existing;
+    var sample = nativeTabs(tablist).filter(function (tab) {
+      return tab.getAttribute("aria-selected") !== "true";
+    })[0] || nativeTabs(tablist)[0];
+    if (sample === undefined) return null;
+    var tab = sample.cloneNode(true);
+    tab.setAttribute("data-dsh-files-tab", "");
+    tab.setAttribute("role", "tab");
+    tab.setAttribute("aria-selected", filesActive ? "true" : "false");
+    tab.removeAttribute("aria-controls");
+    tab.textContent = FILES_LABEL;
+    tab.addEventListener("click", function (event) {
+      event.preventDefault();
+      event.stopPropagation();
+      activateFiles();
+    });
+    tablist.appendChild(tab);
+    return tab;
+  }
+
+  function showFilesPanel() {
+    var content = document.querySelector("[data-conversation-content]");
+    var root = content === null ? null : content.parentElement;
+    if (root === null) return;
+    if (filesPanel !== null && !filesPanel.isConnected) filesPanel = null;
+    if (filesPanel === null) {
+      filesPanel = document.createElement("div");
+      filesPanel.setAttribute("data-dsh-files-panel", "");
+      filesPanel.style.cssText = "position:absolute;left:0;right:0;bottom:0;z-index:25;background:#16181c;";
+      var frame = document.createElement("iframe");
+      frame.src = "/api/workspace-files";
+      frame.title = FILES_LABEL;
+      frame.style.cssText = "border:0;width:100%;height:100%;display:block;background:#16181c;";
+      filesPanel.appendChild(frame);
+    }
+    if (filesPanel.parentElement !== root) root.appendChild(filesPanel);
+    var header = root.querySelector("header");
+    filesPanel.style.top = String(Math.round(header === null ? 76 : header.getBoundingClientRect().height)) + "px";
+  }
+
+  function hideFilesPanel() {
+    if (filesPanel === null) return;
+    filesPanel.remove();
+    filesPanel = null;
+  }
+
+  function activateFiles() {
+    filesActive = true;
+    var tablist = findTablist();
+    if (tablist !== null) {
+      var activeClass = activeClassOf(tablist);
+      var current = nativeTabs(tablist).filter(function (tab) {
+        return tab.getAttribute("aria-selected") === "true";
+      })[0];
+      if (activeClass !== null && current !== undefined) {
+        savedActiveTab = { tab: current, cls: activeClass };
+        current.classList.remove(activeClass);
+        current.setAttribute("aria-selected", "false");
+      }
+      var mine = ensureFilesTab();
+      if (mine !== null) {
+        mine.setAttribute("aria-selected", "true");
+        if (activeClass !== null) mine.classList.add(activeClass);
+      }
+    }
+    showFilesPanel();
+  }
+
+  function deactivateFiles() {
+    if (!filesActive && filesPanel === null) return;
+    filesActive = false;
+    hideFilesPanel();
+    var tablist = findTablist();
+    var mine = tablist === null ? null : tablist.querySelector("[data-dsh-files-tab]");
+    if (mine !== null && savedActiveTab !== null) mine.classList.remove(savedActiveTab.cls);
+    if (mine !== null) mine.setAttribute("aria-selected", "false");
+    if (savedActiveTab !== null) {
+      savedActiveTab.tab.setAttribute("aria-selected", "true");
+      savedActiveTab.tab.classList.add(savedActiveTab.cls);
+      savedActiveTab = null;
+    }
+  }
+
+  // Clicking one of DSH's own tabs leaves the file view.
+  document.addEventListener("click", function (event) {
+    var target = event.target;
+    if (!(target instanceof Element)) return;
+    if (target.closest("[data-dsh-files-tab]") !== null) return;
+    if (target.closest('[role="tablist"][data-conversation-tabs]') !== null) {
+      // Let DSH's own handler run first, then drop our panel.
+      window.setTimeout(deactivateFiles, 0);
+    }
+  }, true);
+
+  // Tab strips and conversation bodies are re-created on session switches, so a
+  // slow tick keeps the tab present and re-attaches the panel when React
+  // replaced the node it hung on.
+  window.setInterval(function () {
+    try {
+      ensureFilesTab();
+      if (filesActive) showFilesPanel();
+    } catch (error) {
+      if (window.console) window.console.warn("dsh-mobile-shell: files tab", error);
+    }
+  }, 700);
+
   // ── drawer scrim + auto-close on conversation switch ────────────────────
   function watch() {
     var panel = document.querySelector('[data-slot="sidebar"] > div');
@@ -168,45 +313,10 @@
       return;
     }
 
-    // Workspace-file browser entry: an absolutely positioned row inside the
-    // sidebar panel, so it needs no DSH DOM surgery. On a phone it lives in the
-    // drawer; on a desktop window the sidebar is always expanded, so the same
-    // row is visible there too (deliberately no narrow-screen gate).
-    var filesLink = null;
-    var syncFilesLink = function () {
-      var open = panel.isConnected && panel.getBoundingClientRect().width > 100;
-      if (!open) {
-        if (filesLink !== null) { filesLink.remove(); filesLink = null; }
-        return;
-      }
-      if (filesLink !== null && filesLink.isConnected) return;
-      // The drawer CSS makes the panel `position: relative` only on narrow
-      // screens; a desktop sidebar is static, where `left/right` would resolve
-      // against the window instead of the sidebar.
-      if (window.getComputedStyle(panel).position === "static") panel.style.position = "relative";
-      filesLink = document.createElement("a");
-      filesLink.href = "/api/workspace-files";
-      filesLink.textContent = "📁 工作区文件";
-      filesLink.title = "浏览 / 下载 / 打包工作区文件";
-      filesLink.setAttribute("data-dsh-files-link", "");
-      filesLink.style.cssText =
-        "position:absolute;left:12px;right:12px;bottom:72px;display:flex;align-items:center;" +
-        "gap:8px;padding:10px 12px;border-radius:10px;color:inherit;text-decoration:none;" +
-        "font:inherit;background:rgba(127,127,127,0.14);-webkit-tap-highlight-color:transparent;";
-      // Re-attach when the shell re-renders the panel contents.
-      panel.appendChild(filesLink);
-    };
-
     var sync = function () {
       var open = narrow.matches && panel.getBoundingClientRect().width > 100;
       if (open) addScrim();
       else removeScrim();
-      try {
-        syncFilesLink();
-      } catch (error) {
-        // The entry point is a convenience; the page URL always works.
-        if (window.console) window.console.warn("dsh-mobile-shell: files link failed", error);
-      }
     };
     if (typeof ResizeObserver === "function") new ResizeObserver(sync).observe(panel);
     window.addEventListener("resize", sync);
@@ -220,6 +330,7 @@
     if (titleNode !== null) {
       new MutationObserver(function () {
         if (narrow.matches && panel.getBoundingClientRect().width > 100) collapseDrawer();
+        deactivateFiles();
       }).observe(titleNode, { childList: true, characterData: true, subtree: true });
     }
   }
